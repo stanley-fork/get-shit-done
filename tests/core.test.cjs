@@ -1009,6 +1009,45 @@ describe('stale hook path', () => {
   });
 });
 
+// ─── shared cache directory regression (#1421) ─────────────────────────────────
+
+describe('shared cache directory (#1421)', () => {
+  test('gsd-check-update.js writes cache to shared ~/.cache/gsd/ directory', () => {
+    const content = fs.readFileSync(
+      path.join(__dirname, '..', 'hooks', 'gsd-check-update.js'), 'utf-8'
+    );
+    // Cache must use a tool-agnostic path so statusline can find it
+    // regardless of which runtime (Claude, Gemini, OpenCode) ran the check
+    assert.ok(
+      content.includes("path.join(homeDir, '.cache', 'gsd')"),
+      'check-update must write cache to ~/.cache/gsd/ (shared, tool-agnostic)'
+    );
+  });
+
+  test('gsd-statusline.js checks shared cache first, falls back to legacy (#1421)', () => {
+    const content = fs.readFileSync(
+      path.join(__dirname, '..', 'hooks', 'gsd-statusline.js'), 'utf-8'
+    );
+    // Statusline must check the shared cache path first
+    assert.ok(
+      content.includes("path.join(homeDir, '.cache', 'gsd', 'gsd-update-check.json')"),
+      'statusline must check shared cache at ~/.cache/gsd/gsd-update-check.json'
+    );
+    // Must fall back to legacy runtime-specific cache for backward compat
+    assert.ok(
+      content.includes("path.join(claudeDir, 'cache', 'gsd-update-check.json')"),
+      'statusline must fall back to legacy cache at claudeDir/cache/gsd-update-check.json'
+    );
+    // Shared cache must be checked before legacy (existsSync order matters)
+    const sharedIdx = content.indexOf('sharedCacheFile');
+    const legacyIdx = content.indexOf('legacyCacheFile');
+    assert.ok(
+      sharedIdx < legacyIdx,
+      'shared cache must be defined and checked before legacy cache'
+    );
+  });
+});
+
 // ─── resolveWorktreeRoot ─────────────────────────────────────────────────────
 
 describe('resolveWorktreeRoot', () => {
