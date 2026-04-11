@@ -31,6 +31,7 @@ const VALID_CONFIG_KEYS = new Set([
   'workflow.plan_bounce_passes',
   'git.branching_strategy', 'git.base_branch', 'git.phase_branch_template', 'git.milestone_branch_template', 'git.quick_branch_template',
   'planning.commit_docs', 'planning.search_gitignored',
+  'workflow.cross_ai_execution', 'workflow.cross_ai_command', 'workflow.cross_ai_timeout',
   'workflow.subagent_timeout',
   'hooks.context_warnings',
   'features.thinking_partner',
