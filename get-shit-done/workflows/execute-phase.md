@@ -241,9 +241,9 @@ else
   git checkout -b "$BRANCH_NAME" "origin/$DEFAULT_BRANCH"  # pinned base (#2916)
 fi
 
-INHERITED=$(git rev-list --count "origin/${DEFAULT_BRANCH}..HEAD" 2>/dev/null || echo "?")
-if [ "$INHERITED" != "0" ] && [ "$INHERITED" != "?" ]; then
-  echo "WARNING: Phase branch '$BRANCH_NAME' contains $INHERITED commit(s) inherited from a non-default base. Verify this is intentional."
+# Warn only when HEAD did NOT fork from origin/$DEFAULT_BRANCH (merge-base ≠ tip) — #2916.
+if MB=$(git merge-base HEAD "origin/${DEFAULT_BRANCH}" 2>/dev/null) && DT=$(git rev-parse --verify --quiet "refs/remotes/origin/${DEFAULT_BRANCH}" 2>/dev/null) && [ "$MB" != "$DT" ]; then
+  echo "WARNING: Phase branch '$BRANCH_NAME' does not fork from origin/${DEFAULT_BRANCH}; verify the base is intentional."
 fi
 ```
 

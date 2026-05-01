@@ -222,9 +222,9 @@ else
   git checkout -b "$branch_name" "origin/$DEFAULT_BRANCH"
 fi
 
-INHERITED=$(git rev-list --count "origin/${DEFAULT_BRANCH}..HEAD" 2>/dev/null || echo "?")
-if [ "$INHERITED" != "0" ] && [ "$INHERITED" != "?" ]; then
-  echo "WARNING: Quick-task branch '$branch_name' contains $INHERITED commit(s) inherited from a non-default base. Verify this is intentional before continuing."
+# Warn only when HEAD did NOT fork from origin/$DEFAULT_BRANCH (merge-base ≠ tip) — #2916.
+if MB=$(git merge-base HEAD "origin/${DEFAULT_BRANCH}" 2>/dev/null) && DT=$(git rev-parse --verify --quiet "refs/remotes/origin/${DEFAULT_BRANCH}" 2>/dev/null) && [ "$MB" != "$DT" ]; then
+  echo "WARNING: Quick-task branch '$branch_name' does not fork from origin/${DEFAULT_BRANCH}; verify the base is intentional before continuing."
 fi
 ```
 
