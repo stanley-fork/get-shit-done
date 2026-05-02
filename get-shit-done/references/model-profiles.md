@@ -133,22 +133,69 @@ If you're using Claude Code with OpenRouter, a local model, or any non-Anthropic
 
 Without `inherit`, GSD's default `balanced` profile spawns specific Anthropic models (`opus`, `sonnet`, `haiku`) for each agent type, which can result in additional API costs through your non-Anthropic provider.
 
+## Dynamic Routing with Failure-Tier Escalation (#3024)
+
+When `dynamic_routing.enabled = true` in `.planning/config.json`, the resolver picks a model from a tier-mapped table based on the agent's *default tier* (light / standard / heavy) and escalates to the next tier up on orchestrator-detected soft failure.
+
+```json
+{
+  "dynamic_routing": {
+    "enabled": true,
+    "tier_models": {
+      "light":    "haiku",
+      "standard": "sonnet",
+      "heavy":    "opus"
+    },
+    "escalate_on_failure": true,
+    "max_escalations": 1
+  }
+}
+```
+
+**Agent default tiers** (each agent in `MODEL_PROFILES` declares one):
+
+| Tier | Agents | Use case |
+|---|---|---|
+| `light` | gsd-codebase-mapper, gsd-pattern-mapper, gsd-research-synthesizer, gsd-plan-checker, gsd-integration-checker, gsd-nyquist-auditor, gsd-ui-checker, gsd-ui-auditor, gsd-doc-verifier | Cheap/fast — pure mappers, scanners, low-stakes audits |
+| `standard` | gsd-executor, gsd-phase-researcher, gsd-project-researcher, gsd-verifier, gsd-doc-writer, gsd-ui-researcher | Default workhorse — research, writing, primary verification |
+| `heavy` | gsd-planner, gsd-roadmapper, gsd-debugger | Deep reasoning — already at top, can't escalate further |
+
+**Escalation flow** (orchestrator-driven):
+
+1. Orchestrator spawns agent with `attempt: 0` → resolver returns `tier_models[default_tier]`
+2. If orchestrator marks the result a soft failure, it re-spawns with `attempt: 1` → resolver returns `tier_models[next_tier_up]`
+3. `max_escalations` caps total retries (default 1). Beyond the cap the resolver returns the cap-tier model so the orchestrator can log without burning further budget.
+4. Hard failures (exceptions) bypass escalation and surface immediately.
+
+**Precedence with other tier sources** (highest → lowest):
+
+1. `model_overrides[<agent>]` — full ID, always wins
+2. `dynamic_routing.tier_models[escalated_tier]` — when `enabled: true`
+3. `models[<phase_type>]` — coarse phase-level (#3023)
+4. `model_profile` — global tier strategy
+
+When `dynamic_routing.enabled = false` (default), behavior is identical to today.
+
 ## Resolution Logic
 
-Orchestrators resolve model before spawning:
+Orchestrators resolve model before spawning. The full precedence ladder
+is (highest → lowest):
 
-```
+```text
 1. Read .planning/config.json
-2. Check model_overrides for agent-specific override
-3. If no override, check models[phase_type] for a phase-type tier
+2. Check model_overrides[<agent>] (full IDs accepted; targeted exceptions)
+3. If dynamic_routing.enabled, return tier_models[escalated_tier]
+   (see §Dynamic Routing — escalation steps tier up per attempt counter)
+4. If no dynamic_routing match, check models[phase_type] for a phase-type tier
    (see §Per-Phase-Type Model Map for the agent → phase-type mapping)
-4. If no phase-type slot, look up agent in profile table
-5. Pass model parameter to Task call
+5. If no phase-type slot, look up agent in profile table
+6. Pass model parameter to Task call
 ```
 
 The same precedence applies to `reasoning_effort` resolution on runtimes
 that support it (Codex), so `model` and `reasoning_effort` always derive
-from the same tier source — a `models[phase_type]` override flips both.
+from the same tier source — a `models[phase_type]` or
+`dynamic_routing` override flips both.
 
 ## Per-Agent Overrides
 
